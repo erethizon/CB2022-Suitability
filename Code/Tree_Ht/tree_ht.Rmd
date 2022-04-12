@@ -1,0 +1,14 @@
+---
+title: "Tree height preference"
+output: html_notebook
+---
+
+Let's figure out the preferred tree heights of our species. We'll use a canopy height data layer and compare to the tree heights found in the iNaturalist home ranges of our species.
+
+Set things up
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(here)
+```
+
