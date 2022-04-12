@@ -1,0 +1,282 @@
+---
+title: "Examine Land Use preferences in Porcupines"
+output: html_notebook
+---
+
+In order to determine habitat suitability, we are working to identify which habitat types are found in the typical home ranges of our species so that we can use that information to build weights for habitat classes.
+
+In lab, you used the "tabulate area" tool in ArcGIS pro to determine the count of the number of pixels of each habitat type that fell within each of the home range polygons you created for each observation of your focal species. You exported the table as a .csv. Today we'll see how to use those data to inform the next step of our project.
+
+1. Set things up and suck in some data
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(here)
+```
+
+Begin by loading the codes for landcover types and sourcing the function
+```{r}
+codes<-read.csv(here("Data", "LULC_codes.csv"))
+source(here("Code", "Functions", "assignLandUse.R"))
+source(here("Code", "Functions", "add_LULC_cases.R"))
+```
+Pull in your data
+
+```{r}
+Use<-read.csv(here("Data", "FinalHR", "ERDO_LULC_HR_subset.csv"))#actual habitat use
+Rand<-read.csv(here("Data", "RandomHR", "ERDO_rand_LULC_subset.csv"))#random habitat use
+```
+Keep just the columns we want
+
+```{r}
+Use<-Use %>% select(OID_:Area)
+```
+Now I need a way to step through all of the OBJECTID_1s and add rows for any missing cover classes, fill values as zero. Do this for both Use and Rand
+
+Use the function called `add_LULC_cases`
+
+Now step through and add LULC cases using function
+```{r}
+Use<-add_LULC_cases(Use)
+Rand<-add_LULC_cases(Rand)
+```
+And test
+```{r}
+check<-Use %>% group_by(OBJECTID_1) %>% summarise(
+   num_classes = length(unique(Value)),
+   num_rows=length(Value))
+```
+Now assign land use categories to each dataframe
+```{r}
+Use<-assignLandUse(Use, codes)
+Rand<-assignLandUse(Rand, codes)
+```
+
+Now prepare to compare use to availability
+
+Make a variable with your species name
+```{r}
+mySpecies<-"Porcupines"
+```
+
+Let's compare use with availability
+
+What is the average number of land cover classes per actual home range
+```{r}
+HR_classes<-Use %>% group_by(OBJECTID_1) %>% summarize(
+   num_classes =length(unique(LandcoverNA))
+   
+)
+```
+
+Run summary statistics, then exclude those points that are all water
+
+
+What is percent habitat use per hab class per home range?
+
+Now compute percent of HR for each habitat class. First join HR_Area to DF
+
+```{r}
+Percent_summary<-Use %>% group_by(OBJECTID_1) %>% summarize(
+   tot_area = sum(Area)
+)
+#now join by OBJECTID_1
+Use<-left_join(Use, Percent_summary)
+Use$PercentAreaUse<-round((100*(Use$Area/Use$tot_area)),2)
+```
+And add a treatment colum
+```{r}
+Use$Treatment<-"Use"
+```
+
+
+Now repeat for random home ranges
+
+```{r}
+Rand_classes<-Rand %>% group_by(OBJECTID_1) %>% summarize(
+   num_classes =length(unique(LandcoverNA))
+   
+)
+```
+
+Run summary statistics, then exclude those points that are all water
+
+
+What is percent habitat use per hab class per home range?
+
+
+Now compute percent of HR for each habitat class. First join HR_Area to DF
+
+```{r}
+Rand_summary<-Rand %>% group_by(OBJECTID_1) %>% summarize(
+   tot_area = sum(Area)
+)
+#now join by OBJECTID_1
+Rand<-left_join(Rand, Rand_summary)
+Rand$PercentAreaUse<-round((100*(Rand$Area/Rand$tot_area)),2)
+```
+And add a treatment colum
+```{r}
+Rand$Treatment<-"Available"
+```
+
+Now join the two 
+```{r}
+All<-rbind(Use, Rand)
+```
+
+Now get average percent of landscape for each class by treatment
+
+```{r}
+All_summary<-All %>% group_by(LandcoverNA, Treatment) %>% summarise(
+   Avg_Percent = mean(PercentAreaUse, na.rm = T),
+   sd_Percent = sd(PercentAreaUse, na.rm = T)
+)
+```
+Now plot to compare
+```{r}
+ggplot(All_summary, aes(LandcoverNA, Avg_Percent, label = round(Avg_Percent, 2), fill = Treatment))+
+   #geom_errorbar(aes(ymax = Avg_Percent + sd_Percent, ymin = 0), width = 0.33, position = position_dodge(0.5))+geom_col(color = "black", position = "dodge", width = 0.5)+
+   scale_fill_manual(values = c("gray", "dark green"))+
+   coord_flip()+
+    labs(x = "Landcover type", y = "Percent of landscape", title = paste0("Distribution of available vs.used habitat types in ", mySpecies))
+   
+```
+
+Let's look at the distribution of percents by treatment and habitat
+
+```{r}
+ggplot(All, aes(PercentAreaUse, fill = Treatment))+
+     geom_histogram( alpha = 0.6, position = "identity")+
+      scale_fill_manual(values = c("gray", "dark green"))+
+     facet_wrap(~LandcoverNA)
+```
+
+Now let's look at use per availability
+
+Use pivot_wider
+```{r}
+Percent_use<-All_summary %>% select(-sd_Percent) %>% pivot_wider(names_from = Treatment, values_from = Avg_Percent)
+```
+Now do the math
+```{r}
+Percent_use<-Percent_use %>% mutate(
+   Use_per_Avail = Use/Available
+)
+```
+And now plot, colored to indicate use
+
+```{r}
+ggplot(Percent_use, aes(LandcoverNA, Use_per_Avail, label = round(Use_per_Avail, 2)))+
+   geom_hline(yintercept = 1)+geom_point(aes(color = cut(Use_per_Avail, c(0,1,3))), size = 2)+
+   scale_color_manual(name = "Use per availablilty",
+                      values = c("(0,1]" = "red",
+                                 "(1,3]" = "dark green"),
+                      labels = c("less than 1", "greater than 1"))+
+geom_text(vjust = -1)+
+   labs(x = "Land use category", y = "Use per availability", title = paste0("Habitat preference in ",mySpecies))+
+   coord_flip()
+```
+
+
+
+And save the figure
+
+```{r}
+filename<-paste0("Hab_pref_in_",mySpecies,".png")
+ggsave(here("Output", filename), device = "png")
+```
+
+
+
+
+
+
+
+
+Now join data to get PercentAreaAvail
+
+```{r}
+DF<-left_join(DF, NA_LULC, by = "Value")
+```
+Now look at use per availability
+
+```{r}
+DF$UperA<-DF$PercentAreaUse/DF$PercentLandArea
+```
+
+Now calculate average use per availability
+```{r}
+
+UperA<-DF %>% group_by(LandcoverNA, Value) %>% summarise(
+   AvgUperA=mean(UperA, na.rm = T),
+   sdUperA = sd(UperA, na.rm = T)
+)
+
+```
+And now plot, colored to indicate use
+
+```{r}
+ggplot(UperA, aes(LandcoverNA, AvgUperA, label = round(AvgUperA, 2)))+
+   geom_hline(yintercept = 1)+geom_point(aes(color = cut(AvgUperA, c(0,1,3))), size = 2)+
+   scale_color_manual(name = "Use per availablilty",
+                      values = c("(0,1]" = "red",
+                                 "(1,3]" = "dark green"),
+                      labels = c("less than 1", "greater than 1"))+
+geom_text(vjust = -1)+
+   labs(x = "Land use category", y = "Use per availability", title = paste0("Habitat preference in ",mySpecies))+
+   coord_flip()
+```
+And save the figure
+
+```{r}
+filename<-paste0("Hab_pref_in_",mySpecies,".png")
+ggsave(here("Output", filename), device = "png")
+```
+
+
+And plot:
+
+```{r}
+ggplot(Percent_long,aes(LandcoverNA, Percent, group = Use_v_Avail, fill = Use_v_Avail))+
+      geom_col(color = "black", position = "dodge", width = 0.5)+
+   scale_fill_manual(values = c("gray",  "dark green"))+
+     coord_flip()+
+     labs(x = "Landcover type", y = "Percent of landscape", title = paste0("Distribution of available vs.used habitat types in ",mySpecies))
+
+
+```
+Now look at the output in the figure and give each land use class a value from 1 - 5 with 1 = least preferred and 5 = most preferred
+
+Now can we figure out for which land use categories use is more than 5% of what is available
+
+Use pivot_wider
+```{r}
+Percent_use<-A_Avg_percent_area %>% select(-sd_percent) %>% pivot_wider(names_from = Treatment, values_from = Mean_percent)
+```
+Now do the math
+```{r}
+Percent_use<-Percent_use %>% mutate(
+   Use_per_Avail = Use/Available
+)
+```
+And now plot, colored to indicate use
+
+```{r}
+ggplot(Percent_use, aes(LandcoverNA, Use_per_Avail, label = round(Use_per_Avail, 2)))+
+   geom_hline(yintercept = 1)+geom_point(aes(color = cut(Use_per_Avail, c(0,1,2))), size = 2)+
+   scale_color_manual(name = "Use per availablilty",
+                      values = c("(0,1]" = "red",
+                                 "(1,2]" = "dark green"),
+                      labels = c("less than 1", "greater than 1"))+
+geom_text(vjust = -1)+
+   labs(x = "Land use category", y = "Use per availability", title = paste0("Habitat preference in ",mySpecies))+
+   coord_flip()
+```
+And save the figure
+
+```{r}
+filename<-paste0("Hab_pref_in_",mySpecies,".png")
+ggsave(here("Output", filename), device = "png")
+```
+

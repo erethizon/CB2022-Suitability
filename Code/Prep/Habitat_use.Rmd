@@ -1,0 +1,259 @@
+---
+title: "Examine Land Use preferences in our species"
+output: html_notebook
+---
+
+In order to determine habitat suitability, we are working to identify which habitat types are found in the typical home ranges of our species so that we can use that information to build weights for habitat classes.
+
+In lab, you used the "tabulate area" tool in ArcGIS pro to determine the count of the number of pixels of each habitat type that fell within each of the home range polygons you created for each observation of your focal species. You exported the table as a .csv. Today we'll see how to use those data to inform the next step of our project.
+
+Let's use the porcupine as an example.
+
+1. Set things up and suck in some data
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(here)
+```
+Pull in some data
+
+```{r}
+DF<-read.csv(here("Data", "ERDO_LULC_table.csv"))
+```
+
+Twelve thousand five hundred eighty-eight rows of data!  Too much for excel!
+
+How many pixels per home range?
+
+```{r}
+HRS<-DF %>% group_by(OBJECTID_1) %>% summarise(
+     pixels = sum(Count),
+     HR_Area = sum(Area)
+)
+```
+
+What is average habitat use per hab class for porcupines?
+
+```{r}
+Avg_Hab<-DF %>% group_by(LandcoverNA) %>% summarise(
+     Avg_area = mean(Area, na.rm = T),
+     sd_area = sd(Area, na.rm = T),
+     Max_area = max(Area,na.rm = T), 
+     min_area = min(Area, na.rm = T),
+     Med_area = median(Area, na.rm = T)
+)
+```
+
+What is percent habitat use per hab class per home range?
+
+```{r}
+DF$PercentArea<-0
+```
+
+Now compute percent of HR for each habitat class. First join HR_Area to DF
+
+```{r}
+DF<-left_join(DF, HRS)
+DF$PercentArea<-(100*(DF$Area/DF$HR_Area))
+```
+
+Let's look at the distribution of percents by habitat
+
+```{r}
+ggplot(DF, aes(PercentArea, fill = PercentArea, color = PercentArea))+
+     geom_histogram()+
+     facet_wrap(~LandcoverNA)
+```
+
+
+
+
+Now calculate average percent area by habitat
+
+```{r}
+Avg_percent_area<-DF %>% group_by(LandcoverNA) %>% summarise(
+     Mean_percent = mean(PercentArea, na.rm = T),
+     sd_percent = sd(PercentArea, na.rm = T)
+)
+```
+And plot:
+
+```{r}
+ggplot(Avg_percent_area, aes(LandcoverNA, Mean_percent, fill = LandcoverNA))+
+     geom_errorbar(aes(ymax = Mean_percent + sd_percent, ymin = 0), width = 0.33)+
+      geom_col(color = "black")+
+     coord_flip()+
+     labs(x = "Landcover type", y = "Percent of home range area", title = "Habitat use in porcupines")
+```
+
+What are these relative to random home ranges?
+
+```{r}
+Rand<-read.csv(here("Data", "Rand_50ha_LULC.csv"))
+```
+Now repeat similar steps as above but for random points. Then exclude those that are all water
+
+How many pixels per home range?
+
+```{r}
+RHRS<-Rand %>% group_by(OBJECTID_1) %>% summarise(
+     pixels = sum(Count),
+     HR_Area = sum(Area)
+)
+```
+
+What is average habitat use per hab class for random locations?
+
+```{r}
+R_Avg_Hab<-Rand %>% group_by(LandcoverNA) %>% summarise(
+     Avg_area = mean(Area, na.rm = T),
+     sd_area = sd(Area, na.rm = T),
+     Max_area = max(Area,na.rm = T), 
+     min_area = min(Area, na.rm = T),
+     Med_area = median(Area, na.rm = T)
+)
+```
+
+What is percent habitat use per hab class per random home range?
+
+```{r}
+Rand$PercentArea<-0
+```
+
+Now compute percent of HR for each habitat class. First join HR_Area to DF
+
+```{r}
+Rand<-left_join(Rand, RHRS)
+Rand$PercentArea<-(100*(Rand$Area/Rand$HR_Area))
+```
+
+Let's look at the distribution of percents by habitat
+
+```{r}
+ggplot(Rand, aes(PercentArea, fill = PercentArea, color = PercentArea))+
+     geom_histogram()+
+     facet_wrap(~LandcoverNA)
+```
+
+Now calculate average percent area by habitat
+
+```{r}
+R_Avg_percent_area<-Rand %>% group_by(LandcoverNA) %>% summarise(
+     Mean_percent = mean(PercentArea, na.rm = T),
+     sd_percent = sd(PercentArea, na.rm = T)
+)
+```
+And plot:
+
+```{r}
+ggplot(R_Avg_percent_area, aes(LandcoverNA, Mean_percent, fill = LandcoverNA))+
+     geom_errorbar(aes(ymax = Mean_percent + sd_percent, ymin = 0), width = 0.33)+
+      geom_col(color = "black")+
+     coord_flip()+
+     labs(x = "Landcover type", y = "Percent of random home range area", title = "Distribution of land cover types in random home ranges")
+```
+Now let's compare use with availability
+
+Begin by adding a column to each dataframe identifying use vs. availability
+```{r}
+DF$Treatment<-"Use"
+Rand$Treatment<-"Available"
+Rand<-Rand[,2:13]
+```
+Now join the datasets with rbind
+
+```{r}
+colnames(Rand)<-colnames(DF)
+
+All<-rbind(DF, Rand)
+```
+Add a unique ID column
+```{r}
+All$ID<-c(1:22134)
+```
+Now check land use categories
+
+```{r}
+unique(All$LandcoverNA)
+```
+Fix urban/built-up
+```{r}
+fix<-which(All$LandcoverNA == "Urban/Built-up")
+All$LandcoverNA[fix]<-"Urban/built-up"
+unique(All$LandcoverNA)
+fix<-which(All$LandcoverNA == "Deciduous")
+All$LandcoverNA[fix]<-"Deciduous forest"
+```
+
+And get our summaries
+
+Now repeat similar steps as above but for all points. Then exclude those that are all water
+
+How many pixels per home range?
+
+```{r}
+AHRS<-All %>% group_by(ID) %>% summarise(
+     pixels = sum(Count),
+     HR_Area = sum(Area)
+)
+```
+
+What is average habitat use per hab class for random locations?
+
+```{r}
+A_Avg_Hab<-All %>% group_by(Treatment, LandcoverNA) %>% summarise(
+     Avg_area = mean(Area, na.rm = T),
+     sd_area = sd(Area, na.rm = T),
+     Max_area = max(Area,na.rm = T), 
+     min_area = min(Area, na.rm = T),
+     Med_area = median(Area, na.rm = T)
+)
+```
+
+What is percent habitat use per hab class per random home range?
+
+```{r}
+All$PercentArea<-0
+```
+
+Now compute percent of HR for each habitat class. First join HR_Area to DF
+
+```{r}
+All<-left_join(All, AHRS)
+All$PercentArea<-(100*(All$Area/All$HR_Area))
+```
+Now get rid of the rows where the landcover is 100% water
+
+```{r}
+dump_water<-which(All$Treatment == "Available" & All$LandcoverNA == "Water" & All$PercentArea == 100)
+
+All<-All[-dump_water,]
+```
+
+Let's look at the distribution of percents by treatment and habitat
+
+```{r}
+ggplot(All, aes(PercentArea, fill = Treatment))+
+     geom_histogram( alpha = 0.6, position = "identity")+
+      scale_fill_manual(values = c("red", "gray"))+
+     facet_wrap(~LandcoverNA)
+```
+
+Now calculate average percent area by habitat
+
+```{r}
+A_Avg_percent_area<-All %>% group_by(Treatment, LandcoverNA) %>% summarise(
+     Mean_percent = mean(PercentArea, na.rm = T),
+     sd_percent = sd(PercentArea, na.rm = T)
+)
+```
+And plot:
+
+```{r}
+ggplot(A_Avg_percent_area, aes(LandcoverNA, Mean_percent, group = Treatment, fill = Treatment))+
+     geom_errorbar(aes(ymax = Mean_percent + sd_percent, ymin = 0), width = 0.33, position = position_dodge(0.5))+
+      geom_col(color = "black", position = "dodge", width = 0.5)+
+     coord_flip()+
+     labs(x = "Landcover type", y = "Percent of landscape", title = "Distribution of available vs.used habitat types")
+```
+Now look at the output in the figure and give each land use class a value from 1 - 5 with 1 = least preferred and 5 = most preferred

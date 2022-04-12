@@ -1,0 +1,36 @@
+---
+title: "Assign landcover classes"
+output: html_notebook
+---
+
+Assign landcover class information to csv files from students
+
+set things up
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(here)
+```
+Get a list of files
+
+```{r}
+myFileList<-list.files(here("Data", "Intermediate"))
+numFiles<-length(myFileList)
+```
+Now create a loop that steps through by opening each file, running my function to assign land cover values, and saving the file to the finalHR folder
+
+Begin by loading the codes for landcover types and sourcing the function
+```{r}
+codes<-read.csv(here("Data", "LULC_codes.csv"))
+source(here("Code", "Functions", "assignLandUse.R"))
+```
+Now make the loop
+```{r}
+for (i in 1:numFiles){
+     #df<-read.csv(here("Data", "Intermediate", myFileList[i]))
+     df<-assignLandUse(df, codes)
+     myFileName<-str_replace(myFileList[i], "int", "HR")
+     write.csv(df, here("Data", "FinalHR", myFileName))
+}
+```
+

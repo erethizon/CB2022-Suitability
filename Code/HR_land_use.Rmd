@@ -1,0 +1,183 @@
+---
+title: "Examine Land Use preferences in Porcupines"
+output: html_notebook
+---
+
+In order to determine habitat suitability, we are working to identify which habitat types are found in the typical home ranges of our species so that we can use that information to build weights for habitat classes.
+
+In lab, you used the "tabulate area" tool in ArcGIS pro to determine the count of the number of pixels of each habitat type that fell within each of the home range polygons you created for each observation of your focal species. You exported the table as a .csv. Today we'll see how to use those data to inform the next step of our project.
+
+1. Set things up and suck in some data
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(here)
+```
+
+Begin by loading the codes for landcover types and sourcing the function
+```{r}
+codes<-read.csv(here("Data", "LULC_codes.csv"))
+source(here("Code", "Functions", "assignLandUse.R"))
+source(here("Code", "Functions", "add_LULC_cases.R"))
+```
+
+Suck in the data on the landscape and use it to get average percent of landscape per class.
+
+```{r}
+NA_LULC<-read.csv(here("Data", "NA_LC_noOntario.csv"))
+#drop to just first 3 columns; then add landcover codes
+NA_LULC<-NA_LULC[,1:3]
+colnames(NA_LULC)<-c("OBJECTID_1", "Value", "Count")
+TotalArea<-sum(NA_LULC$Count)
+NA_LULC<-assignLandUse(NA_LULC, codes)
+
+NA_LULC$PercentLand<-round((100*(NA_LULC$Count/TotalArea)),2)
+Land<-NA_LULC %>% select(Value, LandcoverNA, PercentLand)
+```
+
+Now write some code that steps through each file, sucks it in, processes it, and writes output to a separate directory.
+
+Determine the list of files
+```{r}
+myfiles<-list.files(here("Data", "HR_no_PLCI"))
+numfiles<-length(myfiles)
+```
+Get a list of species codes from the myfiles list
+```{r}
+Species<-str_sub(myfiles,1,4)
+SpecNames<-c("Moose", "Ruffed grouse", "Porcupine", "Fisher",  "American woodcock", "Barred owl")
+```
+Create dataframe to hold results
+
+```{r}
+AvgPreference<-data.frame(Species = character(),
+                          LandcoverNA = character(),
+                          avg_use = numeric(),
+                          avail = numeric(),
+                          avg_pref = numeric(),
+                          sd_use = numeric(),
+                          sd_pref = numeric())
+```
+
+Start the loop
+
+```{r}
+for(i in 1:numfiles){
+   #actual habitat use
+   Use<-read.csv(here("Data", "HR_no_PLCI", myfiles[i]))
+   
+   #make sure each home range has all LULC categories
+   Use<-add_LULC_cases(Use) 
+   #assign land use codes to each category
+   Use<-assignLandUse(Use, codes) 
+   
+
+#determine percent land use
+Percent_summary<-Use %>% group_by(OBJECTID_1) %>% summarize(
+   tot_area = sum(Area)
+)
+#now join by OBJECTID_1
+Use<-left_join(Use, Percent_summary)
+Use$PercentAreaUse<-round((100*(Use$Area/Use$tot_area)),2)
+
+#now join with Land
+Use<-left_join(Use, Land)
+
+#calculate use per availability
+Use$UperA<-Use$PercentAreaUse/Use$PercentLand
+
+#Now get summary
+
+AvgPrefSummary<-Use %>% group_by(LandcoverNA) %>% summarize(
+   avg_use = mean(PercentAreaUse, na.rm = T),
+   avail = mean(PercentLand),
+   avg_pref = mean(UperA, na.rm = T),
+   sd_use = sd(PercentAreaUse, na.rm = T),
+   sd_pref = sd(UperA, na.rm = T)
+)
+AvgPrefSummary$Species<-Species[i]
+AvgPrefSummary<-AvgPrefSummary %>% relocate(Species, .before = LandcoverNA)
+#put data into placeholder
+AvgPreference<-rbind(AvgPreference, AvgPrefSummary)
+
+#And now plot, colored to indicate use
+P<-ggplot(AvgPrefSummary, aes(LandcoverNA, avg_pref, label = round(avg_pref, 2)))+
+   geom_hline(yintercept = 1)+geom_point(aes(color = cut(avg_pref, c(0,1,10))), size = 2)+
+   scale_color_manual(name = "Use per availablilty",
+                      values = c("(0,1]" = "red",
+                                 "(1,10]" = "dark green"),
+                      labels = c("less than 1", "greater than 1"))+
+geom_text(vjust = -1)+
+   labs(x = "Land use category", y = "Use per availability", title = paste0("Habitat preference - ", SpecNames[i]))+
+   coord_flip()
+
+assign(paste0(Species[i],"_pref_plot"),P)
+figname<-paste0(Species[i], "_pref_plot.png")
+ggsave(here("Output", figname), device = "png")
+}
+```
+Now run for red-backed salamander, which needs a different approach since each individual home range is smaller than a pixel.
+
+```{r}
+#actual habitat use
+   Use<-read.csv(here("Data", "HR_PLCI", "PLCI_80m2_LULC.csv"))
+   
+   #assign land use codes to each category
+   Use<-assignLandUse(Use, codes) 
+   
+#now summarize num observations of each land use code
+Percent_summary<-Use %>% group_by(LandcoverNA) %>% summarize(
+   num_hrs = length(Value))
+
+#determine total number of HRs
+Tot_HRS<-sum(Percent_summary$num_hrs)
+
+#now get percent of observations
+Percent_summary$Obs_percent<-round((100*(Percent_summary$num_hrs/Tot_HRS)),2)
+
+#now join with Land
+Percent_summary<-left_join(Percent_summary, Land)
+
+#calculate use per availability
+Percent_summary$UperA<-Percent_summary$Obs_percent/Percent_summary$PercentLand
+
+#Now make compatible with main data frame
+colnames(Percent_summary)<- c("LandcoverNA", "num_hrs", "avg_use", "Value", "avail", "avg_pref")
+
+AvgPrefSummary<-Percent_summary
+AvgPrefSummary$Species<-"PLCI"
+AvgPrefSummary<-AvgPrefSummary %>% relocate(Species, .before = LandcoverNA)
+AvgPrefSummary<-AvgPrefSummary %>% select(Species, LandcoverNA, avg_use, avail, avg_pref)
+
+AvgPrefSummary$sd_use<-NA
+AvgPrefSummary$sd_pref<-NA
+
+  
+
+#put data into placeholder
+AvgPreference<-rbind(AvgPreference, AvgPrefSummary)
+
+#And now plot, colored to indicate use
+PLCI_pref_plot<-ggplot(AvgPrefSummary, aes(LandcoverNA, avg_pref, label = round(avg_pref, 2)))+
+   geom_hline(yintercept = 1)+geom_point(aes(color = cut(avg_pref, c(0,1,10))), size = 2)+
+   scale_color_manual(name = "Use per availablilty",
+                      values = c("(0,1]" = "red",
+                                 "(1,10]" = "dark green"),
+                      labels = c("less than 1", "greater than 1"))+
+geom_text(vjust = -1)+
+   labs(x = "Land use category", y = "Use per availability", title = "Habitat preference - Red backed salamander")+
+   coord_flip()
+
+ggsave(here("Output", "PLCI_pref_plot.png"), device = "png")
+```
+
+Now save data file
+```{r}
+write.csv(AvgPreference, here("Output", "All_species_hab_preference.csv"))
+```
+
+
+
+
+
+

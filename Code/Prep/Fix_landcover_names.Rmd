@@ -1,0 +1,85 @@
+---
+title: "Fix categories"
+output: html_notebook
+---
+This is code to quickly go through a series of files and fix the Landcover category names to be consistent among users
+
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(here)
+```
+
+Get a list of the files in the directory
+
+Suck in one file and fix it
+
+```{r}
+myFile<-read.csv(here("Data", "HR", "PLCI_LULC_table.csv"))
+New_cols<-colnames(myFile)
+New_cols[7:9]<-c("LandcoverNA", "NLCD_US", "LandcoverUS")
+New_cols[5]<-"orig_area"
+New_cols[6]<-"Area"
+colnames(myFile)<-New_cols
+```
+Now strip out just the columns I want
+```{r}
+myFile<-myFile %>% select(OID_, OBJECTID_1, Value, Count, Area)
+```
+And write
+```{r}
+write.csv(myFile, here("Data", "Intermediate", "PLCI_LULC_int.csv"))
+```
+Now next one
+```{r}
+myFile<-read.csv(here("Data", "HR","ALAL_LULC_table.csv"))
+```
+Inspect the columns
+```{r}
+New_cols<-colnames(myFile)
+```
+Now strip out just the columns I want
+```{r}
+myFile<-myFile %>% select(OID_, OBJECTID_1, Value, Count, Area)
+```
+And write
+```{r}
+write.csv(myFile, here("Data", "Intermediate", "ALAL_LULC_int.csv"))
+```
+
+And the next
+```{r}
+myFile<-read.csv(here("Data", "HR","BOUM_LULC_table.csv"))
+colnames(myFile)
+```
+Now strip out just the columns I want
+```{r}
+myFile<-myFile %>% select(OID_, OBJECTID_1, Value, Count, Area)
+```
+
+And write
+```{r}
+write.csv(myFile, here("Data", "Intermediate", "BOUM_LULC_int.csv"))
+```
+
+And the next
+```{r}
+myFile<-read.csv(here("Data", "HR","STVA_LULC_table.csv"))
+colnames(myFile)
+```
+Now strip out just the columns I want
+```{r}
+myFile<-myFile %>% select(OID_, OBJECTID1, Value, Count, Area)
+```
+
+And write
+```{r}
+write.csv(myFile, here("Data", "Intermediate", "STVA_LULC_int.csv"))
+```
+
+
+
+
+
+
+

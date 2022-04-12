@@ -1,0 +1,168 @@
+---
+title: "Examine Land Use preferences in our species"
+output: html_notebook
+---
+
+In order to determine habitat suitability, we are working to identify which habitat types are found in the typical home ranges of our species so that we can use that information to build weights for habitat classes.
+
+In lab, you used the "tabulate area" tool in ArcGIS pro to determine the count of the number of pixels of each habitat type that fell within each of the home range polygons you created for each observation of your focal species. You exported the table as a .csv. Today we'll see how to use those data to inform the next step of our project.
+
+Let's use the porcupine as an example.
+
+1. Set things up and suck in some data
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(here)
+```
+Pull in some data
+
+```{r}
+DF<-read.csv(here("Data", "ERDO_LULC_table.csv"))#actual habitat use
+Rand<-read.csv(here("Data", "RandomHR", "ERDO_Rand_50ha_LULC.csv")) #random habitat use
+```
+
+Twelve thousand five hundred eighty-eight rows of data!  Too much for excel!
+
+Let's compare use with availability
+
+Begin by adding a column to each dataframe identifying use vs. availability
+```{r}
+DF$Treatment<-"Use"
+Rand$Treatment<-"Available"
+Rand<-Rand[,2:10] #get rid of column #1
+```
+Now join the datasets with rbind
+
+```{r}
+colnames(Rand)<-colnames(DF)
+
+All<-rbind(DF, Rand)
+```
+
+Now check land use categories
+
+```{r}
+unique(All$LandcoverNA)
+```
+Fix deciduous
+```{r}
+fix<-which(All$LandcoverNA == "Deciduous")
+All$LandcoverNA[fix]<-"Deciduous forest"
+unique(All$LandcoverNA)
+```
+
+And get our summaries
+
+Run summary statistics, then exclude those points that are all water
+
+How many pixels per home range?
+Make a new column that combines OBJECTID_1 and Treatment
+```{r}
+All$UniqueID<-paste0(All$OBJECTID_1, "-", All$Treatment)
+```
+
+```{r}
+AHRS<-All %>% group_by(UniqueID) %>% summarise(
+     pixels = sum(Count),
+     HR_Area = sum(Area)
+)
+```
+
+What is average habitat use per hab class for random locations?
+
+```{r}
+A_Avg_Hab<-All %>% group_by(LandcoverNA, Treatment) %>% summarise(
+     Avg_area = mean(Area, na.rm = T),
+     sd_area = sd(Area, na.rm = T),
+     Max_area = max(Area,na.rm = T), 
+     min_area = min(Area, na.rm = T),
+     Med_area = median(Area, na.rm = T)
+)
+```
+
+What is percent habitat use per hab class per random home range?
+
+```{r}
+All$PercentArea<-0
+```
+
+Now compute percent of HR for each habitat class. First join HR_Area to DF
+
+```{r}
+All<-left_join(All, AHRS)
+All$PercentArea<-(100*(All$Area/All$HR_Area))
+```
+Now get rid of the rows where the landcover is 100% water
+
+```{r}
+dump_water<-which(All$Treatment == "Available" & All$LandcoverNA == "Water" & All$PercentArea == 100)
+
+All<-All[-dump_water,]
+```
+
+Let's look at the distribution of percents by treatment and habitat
+
+```{r}
+ggplot(All, aes(PercentArea, fill = Treatment))+
+     geom_histogram( alpha = 0.6, position = "identity")+
+      scale_fill_manual(values = c("red", "gray"))+
+     facet_wrap(~LandcoverNA)
+```
+
+Now calculate average percent area by habitat
+
+```{r}
+All$Treatment<-factor(All$Treatment, levels = c("Use", "Available"))
+A_Avg_percent_area<-All %>% group_by(LandcoverNA, Treatment) %>% summarise(
+     Mean_percent = mean(PercentArea, na.rm = T),
+     sd_percent = sd(PercentArea, na.rm = T)
+)
+```
+And plot:
+
+```{r}
+ggplot(A_Avg_percent_area,aes(LandcoverNA, Mean_percent, group = Treatment, fill = Treatment))+
+     #geom_errorbar(aes(ymax = Mean_percent + sd_percent, ymin = 0), width = 0.33, position = position_dodge(0.5))+
+      geom_col(color = "black", position = "dodge", width = 0.5)+
+     coord_flip()+
+     labs(x = "Landcover type", y = "Percent of landscape", title = "Distribution of available vs.used habitat types")
+
+
+```
+Now look at the output in the figure and give each land use class a value from 1 - 5 with 1 = least preferred and 5 = most preferred
+
+Now can we figure out for which land use categories use is more than 5% of what is available
+
+Use pivot_wider
+```{r}
+Percent_use<-A_Avg_percent_area %>% select(-sd_percent) %>% pivot_wider(names_from = Treatment, values_from = Mean_percent)
+```
+Now do the math
+```{r}
+Percent_use<-Percent_use %>% mutate(
+   Use_per_Avail = Use/Available
+)
+```
+And now plot, colored to indicate use
+
+```{r}
+ggplot(Percent_use, aes(LandcoverNA, Use_per_Avail))+
+   geom_point(aes(color = cut(Use_per_Avail, c(0,1,2))), size = 5)+
+   scale_color_manual(name = "Use per availablilty",
+                      values = c("(0,1]" = "red",
+                                 "(1,2]" = "green"),
+                      labels = c("less than 1", "greater than 1"))+
+   geom_hline(yintercept = 1)+
+   labs(x = "Land use category", y = "Use per availability")+
+   coord_flip()
+# ggplot(mtcars, aes(wt, mpg)) + 
+#   geom_point(aes(colour = cut(qsec, c(-Inf, 17, 19, Inf))),
+#              size = 5) +
+#   scale_color_manual(name = "qsec",
+#                      values = c("(-Inf,17]" = "black",
+#                                   "(17,19]" = "yellow",
+#                                   "(19, Inf]" = "red"),
+#                      labels = c("<= 17", "17 < qsec <= 19", "> 19"))
+```
+

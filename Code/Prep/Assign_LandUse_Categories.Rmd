@@ -1,0 +1,46 @@
+---
+title: "Assign land use categories"
+output: html_notebook
+---
+
+In GIS we manually assigned the values from our LULC cover table to the LanduseNA, NLCD adn LanduseUS categories. Now let's see how we could do the same in R.
+
+Start by setting things up and pulling in some data
+
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(here)
+```
+And grab data
+
+```{r}
+Rand<-read.csv(here("Data","RandomHR", "ERDO_Rand_LULC_table.csv"))
+```
+Check for any weird columns
+
+
+Now grab data frame with land use codes
+```{r}
+Codes<-read.csv(here("Data", "LULC_codes.csv"))
+```
+
+
+Now we'd like to step through and assign data to columns. First create the new columns
+Use home-made function
+
+```{r}
+source(here("Code", "Functions", "assignLandUse.R"))
+```
+
+Now run
+```{r}
+Rand<-assignLandUse(Rand, Codes)
+```
+
+And save
+
+```{r}
+write.csv(Rand, here("Data", "RandomHR", "ERDO_Rand_50ha_LULC.csv"))
+```
+

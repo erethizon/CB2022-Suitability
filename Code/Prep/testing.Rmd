@@ -1,0 +1,36 @@
+---
+title: "Fake LULC data"
+output: html_notebook
+---
+
+Let's generate a data frame with some fake LULC data
+
+```{r}
+HR1<-c(1,1,1,2,2,2,3,3,3)
+LULC1<-c("A", "B", "C", "A", "B", "C", "A", "B", "C")
+Percent<-c(0, 0.5, 0.5, 1.0, 0, 0, 0.75, 0.25, 0)
+Actual<-c(25, 33, 42)
+fake<-as.data.frame(cbind(HR1, LULC1, Percent))
+```
+Now make a second fake set that doesn't have each LULC represented, but is otherwise the same as "fake" above
+
+```{r}
+HR2<-c(1,1,2,3,3)
+LULC2<-c("B", "C", "A", "A", "B")
+Percent2<-c(0.5, 0.5, 1.0, 0.75, 0.25)
+fake2<-as.data.frame(cbind(HR2, LULC2, Percent2))
+```
+
+Now see how averages are different: Complete data frame first
+
+```{r}
+fake$Percent<-as.numeric(fake$Percent)
+fake2$Percent<-as.numeric(fake2$Percent)
+fk_sum<-fake %>% group_by(LULC1) %>% summarize(
+     avg_percent = mean(Percent)
+)
+fk2_sum<-fake2 %>% group_by(LULC2) %>% summarise(
+     avg_percent = mean(Percent)
+)
+``` 
+

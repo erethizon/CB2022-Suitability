@@ -1,0 +1,11 @@
+﻿OID_,Value,Count,Landcover_NA,NLCD_code,Landcover_US
+1,1,17764972.000000000000000,Conifer forest,42,Evergreen forest
+2,5,77047996.000000000000000,Deciduous forest,41,Deciduous forest
+3,6,55471797.000000000000000,Mixed forest,43,Mixed forest
+4,8,3412502.000000000000000,Shrubland,50,Shrubland
+5,10,1613837.000000000000000,Grassland,71,Grassland/Herbaceous
+6,14,12501922.000000000000000,Wetland,90,Wetlands
+7,15,52992798.000000000000000,Cropland,80,Planted/Cultivated
+8,16,2336733.000000000000000,Barren land,31,Barren land
+9,17,16221084.000000000000000,Urban and built-up,20,Developed
+10,18,20157772.000000000000000,Water,11,Open water

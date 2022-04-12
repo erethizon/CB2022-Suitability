@@ -1,0 +1,11 @@
+Value,LandcoverNA,NLCD_US,LandcoverUS
+1,Conifer forest,42,Evergreen forest
+5,Deciduous forest,41,Deciduous forest
+6,Mixed forest,43,Mixed forest
+8,Shrubland,52,Shrub/scrub
+10,Grassland,71,Grassland/herbaceous
+14,Wetland,90,Woody&Emerg wetland
+15,Cropland,80,Pasture/Crops
+16,Barren land,31,Barren land
+17,Urban/built-up,20,Developed
+18,Water,11,Open water
