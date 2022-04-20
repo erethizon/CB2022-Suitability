@@ -12,3 +12,99 @@ library(tidyverse)
 library(here)
 ```
 
+First let's look at some data on tree species heights from New Hampshire
+
+Now bring in species data
+```{r}
+Trees<-read.csv(here("Data", "Trees", "tree_heights.csv"))
+```
+
+Add columns to convert to meters
+```{r}
+Trees<-Trees %>% mutate(
+  Mean_ht_m = round(Mean_ht_ft*0.3048,1),
+  sd_ht_m = round(sd_ht_ft*0.3048,1),
+  min_ht_m = round(min_ht_ft*0.3048,1),
+  max_ht_m = round(max_ht_ft*0.3048,1))
+```
+
+Now plot
+```{r}
+Trees %>% arrange(Mean_ht_m) %>% ggplot(aes(reorder(Common.name,Mean_ht_m), Mean_ht_m))+
+  geom_col()+
+  coord_flip()+
+  labs(x = "Tree species", y = "Mean height, m")+
+  theme_bw()
+```
+Pull in the basic information from the tree height raster that we exported from ArcGIS pro.
+
+```{r}
+TH<-read.csv(here("Data", "Trees", "forest_height_data.csv"))
+```
+Now figure out the percent of the landscape made up of each tree height
+
+```{r}
+total_pixels<-sum(TH$COUNT)
+TH<-TH %>% mutate(
+                  Percent = round((100*(TH$COUNT/total_pixels)),2)
+)
+```
+Now let's look at a histogram of tree heights to see if there are natural breaks. We'll ignore values of 0 and above 50.
+
+```{r}
+TH %>% filter(VALUE > 0 & VALUE <= 50 ) %>% ggplot(aes(x = VALUE, y = COUNT))+
+  geom_col()
+```
+So we'll assign tree height as "none-short", "low", "medium", and "tall" based on looking at this figure:
+none-short = up to 10m
+low = 11 to 13 m
+medium = 13 to 19 m
+tall = 20+ m
+
+Write loop to go through and assign the category
+```{r}
+for(i in 1: length(TH$VALUE)){
+  if (TH$VALUE[i] < 11){
+    TH$ht_category[i] <- "none-short"
+  }else if (TH$VALUE[i] > 10 & TH$VALUE[i] < 14){
+    TH$ht_category[i] <- "low"
+  } else if (TH$VALUE[i] > 13 & TH$VALUE[i] <20){
+    TH$ht_category[i] <- "medium"
+  } else if (TH$VALUE[i] >19 & TH$VALUE[i] < 40){
+    TH$ht_category[i] <- "tall"
+  } else {
+    TH$ht_category[i] <- "NA"
+  }
+}
+
+```
+Now let's look at the data for one of our species
+
+```{r}
+PLCI_ht<-read.csv(here("Data", "Trees", "PLCI_for_height.csv"))
+```
+Determine the number of pixels in each home range (Field1)
+```{r}
+PLCI_sums<-PLCI_ht %>% group_by(Field1) %>% summarise(
+  Tot_pixels = sum(Count)
+)
+```
+Now use that to determine the percentages for each home range
+
+```{r}
+STVA_ht<-left_join(STVA_ht, STVA_sums)
+STVA_ht<-STVA_ht %>% mutate(Percent = round(((Count/Tot_pixels)*100),1))
+```
+Now determine use vs. availability
+
+```{r}
+tree_hts<-TH %>% select(VALUE:Percent)
+colnames(tree_hts)<-c("VALUE", "COUNT","Percent_landscape")
+```
+Now join tree_hts to STVA_ht
+```{r}
+STVA_ht<-left_join(STVA_ht, tree_hts)
+```
+
+
+
